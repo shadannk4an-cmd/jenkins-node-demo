@@ -3,9 +3,9 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'ap-south-1'
-        ECR_REGISTRY = '<YOUR-ECR-REGISTRY>'
-        ECR_REPOSITORY = '<YOUR-ECR-REPOSITORY-URI>'
+        AWS_REGION = 'us-east-1'
+        ECR_REGISTRY = '665910433244.dkr.ecr.us-east-1.amazonaws.com'
+        ECR_REPOSITORY = '665910433244.dkr.ecr.us-east-1.amazonaws.com/jenkins-node-demo'
     }
 
     stages {
