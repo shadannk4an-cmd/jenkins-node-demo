@@ -1,21 +1,27 @@
 pipeline {
-    agent {
-        docker {
-            image 'node:24-alpine'
-        }
-    }
+    agent any
 
     stages {
-        stage('Verify Environment') {
+
+        stage('Checkout') {
             steps {
-                sh 'node --version'
-                sh 'npm --version'
+                checkout scm
             }
         }
 
         stage('Test') {
             steps {
-                sh 'npm test'
+                script {
+                    docker.image('node:24-alpine').inside {
+                        sh 'npm test'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t jenkins-node-demo:${BUILD_NUMBER} .'
             }
         }
     }
