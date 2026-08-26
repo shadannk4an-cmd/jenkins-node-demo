@@ -4,8 +4,17 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1'
-        ECR_REGISTRY = '665910433244.dkr.ecr.us-east-1.amazonaws.com'
-        ECR_REPOSITORY = '665910433244.dkr.ecr.us-east-1.amazonaws.com/jenkins-node-demo'
+
+        ECR_REGISTRY =
+            '665910433244.dkr.ecr.us-east-1.amazonaws.com'
+
+        ECR_REPOSITORY =
+            '665910433244.dkr.ecr.us-east-1.amazonaws.com/jenkins-node-demo'
+
+        APP_SERVER_IP = '172.31.45.105'
+
+        SSH_KEY =
+            '/var/lib/jenkins/.ssh/id_ed25519'
     }
 
     stages {
@@ -28,15 +37,21 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t jenkins-node-demo:${BUILD_NUMBER} .'
+                sh '''
+                    docker build \
+                    -t jenkins-node-demo:${BUILD_NUMBER} .
+                '''
             }
         }
 
         stage('Login to ECR') {
             steps {
                 sh '''
-                    aws ecr get-login-password --region ${AWS_REGION} |
-                    docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    aws ecr get-login-password \
+                    --region ${AWS_REGION} |
+                    docker login \
+                    --username AWS \
+                    --password-stdin ${ECR_REGISTRY}
                 '''
             }
         }
@@ -53,7 +68,50 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                sh 'docker push ${ECR_REPOSITORY}:${BUILD_NUMBER}'
+                sh '''
+                    docker push \
+                    ${ECR_REPOSITORY}:${BUILD_NUMBER}
+                '''
+            }
+        }
+
+        stage('Deploy to App Server') {
+            steps {
+                sh '''
+                    ssh \
+                    -i ${SSH_KEY} \
+                    ubuntu@${APP_SERVER_IP} \
+                    "
+                    aws ecr get-login-password \
+                    --region ${AWS_REGION} |
+                    sudo docker login \
+                    --username AWS \
+                    --password-stdin ${ECR_REGISTRY}
+
+                    sudo docker pull \
+                    ${ECR_REPOSITORY}:${BUILD_NUMBER}
+
+                    sudo docker rm \
+                    -f jenkins-node-app || true
+
+                    sudo docker run \
+                    -d \
+                    --name jenkins-node-app \
+                    -p 3000:3000 \
+                    ${ECR_REPOSITORY}:${BUILD_NUMBER}
+                    "
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    ssh \
+                    -i ${SSH_KEY} \
+                    ubuntu@${APP_SERVER_IP} \
+                    "curl -f http://localhost:3000"
+                '''
             }
         }
     }
