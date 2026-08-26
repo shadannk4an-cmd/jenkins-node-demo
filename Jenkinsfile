@@ -105,14 +105,29 @@ pipeline {
         }
 
         stage('Verify Deployment') {
-            steps {
-                sh '''
-                    ssh \
-                    -i ${SSH_KEY} \
-                    ubuntu@${APP_SERVER_IP} \
-                    "curl -f http://localhost:3000"
-                '''
-            }
-        }
+    steps {
+        sh '''
+            ssh \
+            -i ${SSH_KEY} \
+            ubuntu@${APP_SERVER_IP} \
+            "
+            echo 'Waiting for application to become ready...'
+
+            for i in 1 2 3 4 5 6; do
+                if curl -f http://localhost:3000; then
+                    echo 'Application is healthy'
+                    exit 0
+                fi
+
+                echo 'Application not ready yet. Retrying in 5 seconds...'
+                sleep 5
+            done
+
+            echo 'Application failed health check'
+            exit 1
+            "
+        '''
+    }
+}
     }
 }
