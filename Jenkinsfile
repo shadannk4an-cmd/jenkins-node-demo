@@ -87,17 +87,13 @@ pipeline {
                             -i ${SSH_KEY} \
                             ubuntu@${APP_SERVER_IP} \
                             "sudo docker inspect \
-                            --format='{{.Config.Image}}' \
-                            jenkins-node-app"
+                            --format='{{.Image}}' \
+                            jenkins-node-app || true"
                         """,
                         returnStdout: true
                     ).trim()
 
-                    echo "Previous image: ${env.PREVIOUS_IMAGE}"
-
-                    if (!env.PREVIOUS_IMAGE?.trim()) {
-                        error('Could not determine previous running image.')
-                    }
+                    echo "Previous image ID: ${env.PREVIOUS_IMAGE}"
                 }
             }
         }
@@ -154,6 +150,7 @@ pipeline {
 
                                 echo 'Application not ready yet. Retrying in 5 seconds...'
                                 sleep 5
+
                             done
 
                             echo 'Application failed health check'
@@ -167,42 +164,42 @@ pipeline {
 
                         echo 'Health check failed. Starting automatic rollback...'
 
-                        sh '''
-                            ssh \
-                            -i ${SSH_KEY} \
-                            ubuntu@${APP_SERVER_IP} \
-                            "
-                            echo 'Removing failed container...'
+                        if (env.PREVIOUS_IMAGE?.trim()) {
 
-                            sudo docker rm \
-                            -f jenkins-node-app || true
+                            sh '''
+                                ssh \
+                                -i ${SSH_KEY} \
+                                ubuntu@${APP_SERVER_IP} \
+                                "
+                                echo 'Removing failed container...'
 
-                            echo 'Pulling previous image...'
+                                sudo docker rm \
+                                -f jenkins-node-app || true
 
-                            sudo docker pull \
-                            ${PREVIOUS_IMAGE}
+                                echo 'Starting previous image...'
 
-                            echo 'Starting previous image...'
+                                sudo docker run \
+                                -d \
+                                --name jenkins-node-app \
+                                -p 3000:3000 \
+                                ${PREVIOUS_IMAGE}
 
-                            sudo docker run \
-                            -d \
-                            --name jenkins-node-app \
-                            -p 3000:3000 \
-                            ${PREVIOUS_IMAGE}
+                                echo 'Waiting for rollback version...'
 
-                            echo 'Waiting for rollback version...'
+                                sleep 5
 
-                            sleep 5
+                                echo 'Verifying rollback...'
 
-                            echo 'Verifying rollback...'
+                                curl -f http://localhost:3000/health
 
-                            curl -f http://localhost:3000/health
+                                echo 'Rollback successful. Previous version is healthy.'
+                                "
+                            '''
 
-                            echo 'Rollback successful.'
-                            "
-                        '''
+                            error('New deployment failed. Automatic rollback completed successfully.')
+                        }
 
-                        error('New deployment failed. Previous version restored successfully.')
+                        error('New deployment failed and no previous image was available for rollback.')
                     }
 
                     echo 'New deployment verified successfully.'
