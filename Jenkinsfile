@@ -15,6 +15,8 @@ pipeline {
 
         SSH_KEY =
             '/var/lib/jenkins/.ssh/id_ed25519'
+
+        PREVIOUS_IMAGE = ''
     }
 
     stages {
@@ -75,6 +77,27 @@ pipeline {
             }
         }
 
+        stage('Save Previous Image') {
+            steps {
+                script {
+
+                    env.PREVIOUS_IMAGE = sh(
+                        script: """
+                            ssh \
+                            -i ${SSH_KEY} \
+                            ubuntu@${APP_SERVER_IP} \
+                            "sudo docker inspect \
+                            --format='{{.Config.Image}}' \
+                            jenkins-node-app 2>/dev/null || true"
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Previous image: ${env.PREVIOUS_IMAGE}"
+                }
+            }
+        }
+
         stage('Deploy to App Server') {
             steps {
                 sh '''
@@ -105,29 +128,87 @@ pipeline {
         }
 
         stage('Verify Deployment') {
-    steps {
-        sh '''
-            ssh \
-            -i ${SSH_KEY} \
-            ubuntu@${APP_SERVER_IP} \
-            "
-            echo 'Waiting for application to become ready...'
+            steps {
+                script {
 
-            for i in 1 2 3 4 5 6; do
-                if curl -f http://localhost:3000; then
-                    echo 'Application is healthy'
-                    exit 0
-                fi
+                    def healthStatus = sh(
+                        script: '''
+                            ssh \
+                            -i ${SSH_KEY} \
+                            ubuntu@${APP_SERVER_IP} \
+                            "
+                            echo 'Waiting for application to become ready...'
 
-                echo 'Application not ready yet. Retrying in 5 seconds...'
-                sleep 5
-            done
+                            for i in 1 2 3 4 5 6; do
 
-            echo 'Application failed health check'
-            exit 1
-            "
-        '''
+                                if curl -f http://localhost:3000; then
+
+                                    echo 'Application is healthy'
+                                    exit 0
+
+                                fi
+
+                                echo 'Application not ready yet. Retrying in 5 seconds...'
+                                sleep 5
+                            done
+
+                            echo 'Application failed health check'
+                            exit 1
+                            "
+                        ''',
+                        returnStatus: true
+                    )
+
+                    if (healthStatus != 0) {
+
+                        echo 'Health check failed. Starting rollback...'
+
+                        if (env.PREVIOUS_IMAGE?.trim()) {
+
+                            sh '''
+                                ssh \
+                                -i ${SSH_KEY} \
+                                ubuntu@${APP_SERVER_IP} \
+                                "
+                                echo 'Removing failed container...'
+
+                                sudo docker rm \
+                                -f jenkins-node-app || true
+
+                                echo 'Starting previous image...'
+
+                                sudo docker run \
+                                -d \
+                                --name jenkins-node-app \
+                                -p 3000:3000 \
+                                ${PREVIOUS_IMAGE}
+                                "
+                            '''
+
+                            error('Deployment failed. Previous image restored.')
+                        }
+
+                        error('Deployment failed and no previous image was available.')
+                    }
+
+                    echo 'Deployment verified successfully.'
+                }
+            }
+        }
     }
-}
+
+    post {
+
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+
+        failure {
+            echo 'Pipeline failed. Check logs for deployment or rollback details.'
+        }
+
+        always {
+            echo 'Pipeline execution finished.'
+        }
     }
 }
