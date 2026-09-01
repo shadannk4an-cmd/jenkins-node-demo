@@ -47,16 +47,23 @@ pipeline {
         }
 
         stage('Login to ECR') {
-            steps {
-                sh '''
-                    aws ecr get-login-password \
-                    --region ${AWS_REGION} |
-                    docker login \
-                    --username AWS \
-                    --password-stdin ${ECR_REGISTRY}
-                '''
-            }
+    steps {
+        retry(3) {
+            sh '''
+                aws ecr get-login-password \
+                --region ${AWS_REGION} \
+                > /tmp/ecr-password-${BUILD_NUMBER}
+
+                docker login \
+                --username AWS \
+                --password-stdin ${ECR_REGISTRY} \
+                < /tmp/ecr-password-${BUILD_NUMBER}
+
+                rm -f /tmp/ecr-password-${BUILD_NUMBER}
+            '''
         }
+    }
+}
 
         stage('Tag Docker Image') {
             steps {
