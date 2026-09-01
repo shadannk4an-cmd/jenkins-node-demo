@@ -77,7 +77,7 @@ pipeline {
             }
         }
 
-        stage('Save Previous Image') {
+        stage('Read Last Good Image') {
             steps {
                 script {
 
@@ -86,14 +86,16 @@ pipeline {
                             ssh \
                             -i ${SSH_KEY} \
                             ubuntu@${APP_SERVER_IP} \
-                            "sudo docker inspect \
-                            --format='{{.Image}}' \
-                            jenkins-node-app || true"
+                            "sudo cat /opt/jenkins-node-demo/last_good_image 2>/dev/null || true"
                         """,
                         returnStdout: true
                     ).trim()
 
-                    echo "Previous image ID: ${env.PREVIOUS_IMAGE}"
+                    if (env.PREVIOUS_IMAGE?.trim()) {
+                        echo "Last known good image: ${env.PREVIOUS_IMAGE}"
+                    } else {
+                        echo 'No last-known-good image recorded yet.'
+                    }
                 }
             }
         }
@@ -142,10 +144,8 @@ pipeline {
                             for i in 1 2 3 4 5 6; do
 
                                 if curl -f http://localhost:3000/health; then
-
                                     echo 'Application is healthy'
                                     exit 0
-
                                 fi
 
                                 echo 'Application not ready yet. Retrying in 5 seconds...'
@@ -162,9 +162,11 @@ pipeline {
 
                     if (healthStatus != 0) {
 
-                        echo 'Health check failed. Starting automatic rollback...'
+                        echo 'Health check failed.'
 
                         if (env.PREVIOUS_IMAGE?.trim()) {
+
+                            echo "Starting rollback to ${env.PREVIOUS_IMAGE}"
 
                             sh '''
                                 ssh \
@@ -176,7 +178,12 @@ pipeline {
                                 sudo docker rm \
                                 -f jenkins-node-app || true
 
-                                echo 'Starting previous image...'
+                                echo 'Pulling last known good image...'
+
+                                sudo docker pull \
+                                ${PREVIOUS_IMAGE}
+
+                                echo 'Starting last known good image...'
 
                                 sudo docker run \
                                 -d \
@@ -185,25 +192,44 @@ pipeline {
                                 ${PREVIOUS_IMAGE}
 
                                 echo 'Waiting for rollback version...'
-
                                 sleep 5
 
                                 echo 'Verifying rollback...'
 
                                 curl -f http://localhost:3000/health
 
-                                echo 'Rollback successful. Previous version is healthy.'
+                                echo 'ROLLBACK SUCCESSFUL'
                                 "
                             '''
 
-                            error('New deployment failed. Automatic rollback completed successfully.')
+                            error('New deployment failed. Automatic rollback succeeded.')
                         }
 
-                        error('New deployment failed and no previous image was available for rollback.')
+                        error('New deployment failed. No last-known-good image exists yet.')
                     }
 
                     echo 'New deployment verified successfully.'
                 }
+            }
+        }
+
+        stage('Mark Image as Last Good') {
+            steps {
+                sh '''
+                    ssh \
+                    -i ${SSH_KEY} \
+                    ubuntu@${APP_SERVER_IP} \
+                    "
+                    sudo mkdir -p /opt/jenkins-node-demo
+
+                    echo '${ECR_REPOSITORY}:${BUILD_NUMBER}' |
+                    sudo tee /opt/jenkins-node-demo/last_good_image \
+                    > /dev/null
+
+                    echo 'Saved last-known-good image:'
+                    sudo cat /opt/jenkins-node-demo/last_good_image
+                    "
+                '''
             }
         }
     }
