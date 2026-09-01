@@ -19,7 +19,7 @@ if (require.main === module) {
         res.end(greet('Jenkins CI/CD'));
     });
 
-    server.listen(3000, '0.0.0.0', () => {
+    server.listen(4000, '0.0.0.0', () => {
         console.log('Server running on port 3000');
     });
 }
