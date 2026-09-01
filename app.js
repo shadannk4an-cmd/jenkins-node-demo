@@ -6,6 +6,15 @@ function greet(name) {
 
 if (require.main === module) {
     const server = http.createServer((req, res) => {
+
+        // Health check endpoint
+        if (req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('OK');
+            return;
+        }
+
+        // Normal application response
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end(greet('Jenkins CI/CD'));
     });
