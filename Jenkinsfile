@@ -144,11 +144,11 @@ pipeline {
         // 7. READ LAST KNOWN GOOD IMAGE
         // ============================================================
 
-        stage('Read Last Good Image') {
-            steps {
-                script {
+       stage('Read Last Good Image') {
+    steps {
+        script {
 
-            env.PREVIOUS_IMAGE = sh(
+            def previousImage = sh(
                 script: """
                     ssh \
                     -o BatchMode=yes \
@@ -159,6 +159,12 @@ pipeline {
                 """,
                 returnStdout: true
             ).trim()
+
+            if (!previousImage) {
+                error('Could not read last-known-good image from App Server.')
+            }
+
+            env.PREVIOUS_IMAGE = previousImage
 
             echo "Last known good image: ${env.PREVIOUS_IMAGE}"
         }
