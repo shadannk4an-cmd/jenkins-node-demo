@@ -148,30 +148,22 @@ pipeline {
             steps {
                 script {
 
-                    env.PREVIOUS_IMAGE = sh(
-                        script: """
-                            ssh \
-                            -o BatchMode=yes \
-                            -o ConnectTimeout=10 \
-                            -i ${SSH_KEY} \
-                            ubuntu@${APP_SERVER_IP} \
-                            "sudo cat /opt/jenkins-node-demo/last_good_image 2>/dev/null || true"
-                        """,
-                        returnStdout: true
-                    ).trim()
+            env.PREVIOUS_IMAGE = sh(
+                script: """
+                    ssh \
+                    -o BatchMode=yes \
+                    -o ConnectTimeout=10 \
+                    -i ${SSH_KEY} \
+                    ubuntu@${APP_SERVER_IP} \
+                    "sudo cat /opt/jenkins-node-demo/last_good_image"
+                """,
+                returnStdout: true
+            ).trim()
 
-                    if (env.PREVIOUS_IMAGE?.trim()) {
-
-                        echo "Last known good image:"
-                        echo "${env.PREVIOUS_IMAGE}"
-
-                    } else {
-
-                        echo "No last-known-good image recorded yet."
-                    }
-                }
-            }
+            echo "Last known good image: ${env.PREVIOUS_IMAGE}"
         }
+    }
+}
 
 
         // ============================================================
